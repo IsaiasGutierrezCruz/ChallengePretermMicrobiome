@@ -1,12 +1,12 @@
 # from sklearn.base import BaseEstimator, TransformerMixin
 # from sklearn.pipeline import Pipeline
+import itertools
+
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.metrics import auc, confusion_matrix, roc_curve
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import confusion_matrix
-import numpy as np
-import itertools
-import matplotlib.pyplot as plt
-from sklearn.metrics import roc_curve, auc
 
 
 def feature_dropper(data, list_feat):
@@ -28,7 +28,7 @@ def split_data_stratified(data, output_name, test_size=0.2) -> tuple:
 
     Returns
     -------
-    A tuple with a pair of stratified train and test dataframes
+        A tuple with a pair of stratified train and test dataframes, a pair of X_train and y_trian, and x_test and test sets
     """
     strati_train_set = None
     strati_test_set = None
@@ -36,43 +36,48 @@ def split_data_stratified(data, output_name, test_size=0.2) -> tuple:
     for train_indices, test_indices in split.split(data, data[output_name]):
         strati_train_set = data.loc[train_indices]
         strati_test_set = data.loc[test_indices]
-    return strati_train_set, strati_test_set
+
+    X_train, y_train = (
+        strati_train_set.drop(output_name, axis=1),
+        strati_train_set[output_name],
+    )
+    X_test, y_test = (
+        strati_test_set.drop(output_name, axis=1),
+        strati_test_set[output_name],
+    )
+
+    return strati_train_set, strati_test_set, X_train, y_train, X_test, y_test
 
 
-def standard_data(strati_train_set, strati_test_set, output_name) -> tuple:
+def standard_data(x_train, x_test) -> tuple:
     """
-    Function to standardize the train and test sets.
+    Function to standardize the x_train and x_test sets.
 
     Parameters
     ----------
-    strati_train_set: DataFrame
-        Stratified train data
-    strati_test_set: DataFrame
-        Stratified test data
-    output_name: str
-        Name of the column with the output categories
+    x_train: DataFrame
+        X train dataset
+    x_test : DataFrame
+        X test dataset
 
     Returns
     -------
-    Tuple with the train and test sets with the outcome separated of the predictors
+        Tuple with the standardise train and test sets
     """
-    x = strati_train_set.drop([output_name], axis=1)
-    y = strati_train_set[output_name]
 
     scaler = StandardScaler()
-    x_train = scaler.fit_transform(x)
-    y_train = y.to_numpy()
-
-    x_test = strati_test_set.drop([output_name], axis=1)
-    y_test = strati_test_set[output_name]
+    x_train = scaler.fit_transform(x_train)
+    # y_train = y_train.to_numpy()
 
     x_test = scaler.transform(x_test)
-    y_test = y_test.to_numpy()
+    # y_test = y_test.to_numpy()
 
-    return x_train, y_train, x_test, y_test
+    return x_train, x_test
 
 
-def evaluate_model(data, model, output_name, n_splits=10, split_method="StratifiedShuffle"):
+def evaluate_model(
+    data, model, output_name, n_splits=10, split_method="StratifiedShuffle"
+):
     """
     Function to get the predicted targets using train and tests sets generated with a specific split method
 
@@ -102,12 +107,15 @@ def evaluate_model(data, model, output_name, n_splits=10, split_method="Stratifi
     else:
         split = None
 
-    assert split is not None, 'Be sure to have selected a correct split_method'
+    assert split is not None, "Be sure to have selected a correct split_method"
+
     for train_indices, test_indices in split.split(data, data[output_name]):
         strati_train_set = data.loc[train_indices]
         strati_test_set = data.loc[test_indices]
 
-        x_train, y_train, x_test, y_test = standard_data(strati_train_set, strati_test_set, output_name=output_name)
+        x_train, y_train, x_test, y_test = standard_data(
+            strati_train_set, strati_test_set, output_name=output_name
+        )
 
         model.fit(x_train, y_train)
         predicted_labels = model.predict(x_test)
@@ -118,8 +126,13 @@ def evaluate_model(data, model, output_name, n_splits=10, split_method="Stratifi
     return predicted_targets, actual_targets
 
 
-def plot_confusion_matrix(y_test_list, predicted_label_list, classes, normalize=True,
-                          title="Normalized confusion matrix"):
+def plot_confusion_matrix(
+    y_test_list,
+    predicted_label_list,
+    classes,
+    normalize=True,
+    title="Normalized confusion matrix",
+):
     """
     Construction of a heatmap with the confusion matrix generated with the original and predicted target lists
 
@@ -150,10 +163,10 @@ def plot_confusion_matrix(y_test_list, predicted_label_list, classes, normalize=
     np.set_printoptions(precision=2)
 
     if normalize:
-        cnf_matrix = cnf_matrix.astype('float') / cnf_matrix.sum(axis=1)[:, np.newaxis]
-        print('Normalized confusion matrix')
+        cnf_matrix = cnf_matrix.astype("float") / cnf_matrix.sum(axis=1)[:, np.newaxis]
+        print("Normalized confusion matrix")
     figure = plt.figure()
-    plt.imshow(cnf_matrix, interpolation='nearest', cmap=plt.get_cmap("YlGnBu"))
+    plt.imshow(cnf_matrix, interpolation="nearest", cmap=plt.get_cmap("YlGnBu"))
     plt.title(title)
     plt.colorbar()
 
@@ -161,16 +174,23 @@ def plot_confusion_matrix(y_test_list, predicted_label_list, classes, normalize=
     plt.xticks(tick_marks, classes, rotation=45)
     plt.yticks(tick_marks, classes)
 
-    fmt = '.2f' if normalize else 'd'
-    thresh = cnf_matrix.max() / 2.
+    fmt = ".2f" if normalize else "d"
+    thresh = cnf_matrix.max() / 2.0
 
-    for i, j in itertools.product(range(cnf_matrix.shape[0]), range(cnf_matrix.shape[1])):
-        plt.text(j, i, format(cnf_matrix[i, j], fmt), horizontalalignment="center",
-                 color="black" if cnf_matrix[i, j] > thresh else "blue")
+    for i, j in itertools.product(
+        range(cnf_matrix.shape[0]), range(cnf_matrix.shape[1])
+    ):
+        plt.text(
+            j,
+            i,
+            format(cnf_matrix[i, j], fmt),
+            horizontalalignment="center",
+            color="black" if cnf_matrix[i, j] > thresh else "blue",
+        )
 
     plt.tight_layout()
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
+    plt.ylabel("True label")
+    plt.xlabel("Predicted label")
     # return cnf_matrix
     return figure
 
@@ -195,29 +215,37 @@ def plot_roc_auc(actual_target, predicted_target):
 
 
     """
-    fig1 = plt.figure(figsize=[12,12])
-    ax1 = fig1.add_subplot(111, aspect='equal')
+    fig1 = plt.figure(figsize=[12, 12])
+    ax1 = fig1.add_subplot(111, aspect="equal")
 
     tprs = []
     aucs = []
-    mean_fpr = np.linspace(0,1,100)
+    mean_fpr = np.linspace(0, 1, 100)
     i = 1
-    for true_target,predict_target in zip(actual_target, predicted_target):
+    for true_target, predict_target in zip(actual_target, predicted_target):
         fpr, tpr, t = roc_curve(true_target, predict_target)
         tprs.append(np.interp(mean_fpr, fpr, tpr))
         roc_auc = auc(fpr, tpr)
         aucs.append(roc_auc)
-        plt.plot(fpr, tpr, lw=2, alpha=0.3, label='ROC fold %d (AUC = %0.2f)' % (i, roc_auc))
-        i = i+1
+        plt.plot(
+            fpr, tpr, lw=2, alpha=0.3, label="ROC fold %d (AUC = %0.2f)" % (i, roc_auc)
+        )
+        i = i + 1
 
-    plt.plot([0, 1], [0, 1],linestyle='--', lw=2, color='black')
+    plt.plot([0, 1], [0, 1], linestyle="--", lw=2, color="black")
     mean_tpr = np.mean(tprs, axis=0)
     mean_auc = auc(mean_fpr, mean_tpr)
-    plt.plot(mean_fpr, mean_tpr, color='blue',
-             label=r'Mean ROC (AUC = %0.2f )' % mean_auc, lw=2, alpha=1)
+    plt.plot(
+        mean_fpr,
+        mean_tpr,
+        color="blue",
+        label=r"Mean ROC (AUC = %0.2f )" % mean_auc,
+        lw=2,
+        alpha=1,
+    )
 
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC')
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC")
     plt.legend(loc="lower right")
     return fig1
