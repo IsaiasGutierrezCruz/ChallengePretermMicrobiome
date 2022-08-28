@@ -76,7 +76,12 @@ def standard_data(x_train, x_test) -> tuple:
 
 
 def evaluate_model(
-    data, model, output_name, n_splits=10, split_method="StratifiedShuffle"
+    data,
+    model,
+    output_name,
+    n_splits=10,
+    split_method="StratifiedShuffle",
+    standardize_x_data=False,
 ):
     """
     Function to get the predicted targets using train and tests sets generated with a specific split method
@@ -113,12 +118,23 @@ def evaluate_model(
         strati_train_set = data.loc[train_indices]
         strati_test_set = data.loc[test_indices]
 
-        x_train, y_train, x_test, y_test = standard_data(
-            strati_train_set, strati_test_set, output_name=output_name
+        X_train, y_train = (
+            strati_train_set.drop(output_name, axis=1),
+            strati_train_set[output_name],
+        )
+        X_test, y_test = (
+            strati_test_set.drop(output_name, axis=1),
+            strati_test_set[output_name],
         )
 
-        model.fit(x_train, y_train)
-        predicted_labels = model.predict(x_test)
+        if standardize_x_data:
+            X_train, X_test = standard_data(X_train.copy(), X_test.copy())
+
+            model.fit(X_train, y_train)
+            predicted_labels = model.predict(X_test)
+
+        model.fit(X_train.values, y_train)
+        predicted_labels = model.predict(X_test.values)
 
         predicted_targets.append(predicted_labels)
         actual_targets.append(y_test)
